@@ -365,11 +365,19 @@ class _AppsTabState extends State<_AppsTab> {
     final allSocialApps = widget.controller.apps
         .where(_isSocialApp)
         .toList(growable: false);
-    final blockedSocialCount = allSocialApps
-        .where((app) => widget.controller.isAlwaysBlocked(app.packageName))
+    final fullyBlockedSocialCount = allSocialApps
+        .where((app) {
+          final packageName = app.packageName.toLowerCase();
+          final appBlocked = widget.controller.isAlwaysBlocked(packageName);
+          final vpnBlocked = _isQuickVpnBrowserBlockEnabled(
+            widget.controller.ruleFor(packageName),
+          );
+          return appBlocked && vpnBlocked;
+        })
         .length;
     final shouldBlockSocialApps =
-        blockedSocialCount != allSocialApps.length && allSocialApps.isNotEmpty;
+        fullyBlockedSocialCount != allSocialApps.length &&
+        allSocialApps.isNotEmpty;
     final apps = widget.controller.apps.where((app) {
       if (normalizedQuery.isEmpty) {
         return true;
@@ -630,9 +638,10 @@ class _AppsTabState extends State<_AppsTab> {
     setState(() {
       _isBlockingSocialApps = true;
     });
-    final newlyBlocked = await widget.controller.setAlwaysBlockedForPackages(
+    final changedCount = await widget.controller.applyQuickBlockOptionsForPackages(
       socialPackages,
-      shouldBlock,
+      blockApp: shouldBlock,
+      blockVpnInBrowsers: shouldBlock,
     );
     if (!mounted) {
       return;
@@ -640,14 +649,17 @@ class _AppsTabState extends State<_AppsTab> {
     setState(() {
       _isBlockingSocialApps = false;
     });
+    if (changedCount < 0) {
+      return;
+    }
 
     final message = shouldBlock
-        ? newlyBlocked == 0
-              ? 'Las redes sociales detectadas ya estaban pausadas.'
-              : 'Se pausaron $newlyBlocked apps de redes sociales.'
-        : newlyBlocked == 0
-        ? 'No habia redes sociales pausadas para desbloquear.'
-        : 'Se desbloquearon $newlyBlocked apps de redes sociales.';
+        ? changedCount == 0
+              ? 'Las redes sociales detectadas ya estaban bloqueadas en app y navegadores.'
+              : 'Se bloquearon $changedCount apps de redes sociales en app y navegadores.'
+        : changedCount == 0
+        ? 'No habia redes sociales bloqueadas en app y navegadores para desbloquear.'
+        : 'Se desbloquearon $changedCount apps de redes sociales en app y navegadores.';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );

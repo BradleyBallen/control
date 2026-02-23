@@ -184,36 +184,70 @@ class ParentalDashboardController extends ChangeNotifier {
     required bool blockApp,
     required bool blockVpnInBrowsers,
   }) async {
-    final normalizedPackage = packageName.trim().toLowerCase();
-    if (normalizedPackage.isEmpty) {
-      return false;
+    final changedCount = await applyQuickBlockOptionsForPackages(
+      <String>{packageName},
+      blockApp: blockApp,
+      blockVpnInBrowsers: blockVpnInBrowsers,
+    );
+    return changedCount >= 0;
+  }
+
+  Future<int> applyQuickBlockOptionsForPackages(
+    Iterable<String> packageNames, {
+    required bool blockApp,
+    required bool blockVpnInBrowsers,
+  }) async {
+    final normalizedPackages = packageNames
+        .map((packageName) => packageName.trim().toLowerCase())
+        .where((packageName) => packageName.isNotEmpty)
+        .toSet();
+    if (normalizedPackages.isEmpty) {
+      return 0;
     }
 
     final previousSet = Set<String>.from(_alwaysBlockedPackages);
     final previousRules = Map<String, AppControlRule>.from(_rulesByPackage);
-
     final nextSet = Set<String>.from(_alwaysBlockedPackages);
-    if (blockApp) {
-      nextSet.add(normalizedPackage);
-    } else {
-      nextSet.remove(normalizedPackage);
+    final nextRules = Map<String, AppControlRule>.from(_rulesByPackage);
+    var changedCount = 0;
+
+    for (final normalizedPackage in normalizedPackages) {
+      final isCurrentlyAppBlocked = nextSet.contains(normalizedPackage);
+      final currentRule = nextRules[normalizedPackage];
+      final isCurrentlyVpnBlocked =
+          currentRule?.alwaysBlocked == true && currentRule?.vpnBlockEnabled == true;
+      if (isCurrentlyAppBlocked == blockApp &&
+          isCurrentlyVpnBlocked == blockVpnInBrowsers) {
+        continue;
+      }
+      changedCount++;
+
+      if (blockApp) {
+        nextSet.add(normalizedPackage);
+      } else {
+        nextSet.remove(normalizedPackage);
+      }
+
+      final existingRule =
+          nextRules[normalizedPackage] ??
+          AppControlRule(
+            packageName: normalizedPackage,
+            vpnBlockEnabled: false,
+          );
+      final updatedRule = existingRule.copyWith(
+        packageName: normalizedPackage,
+        alwaysBlocked: blockVpnInBrowsers,
+        vpnBlockEnabled: blockVpnInBrowsers,
+      );
+      if (_shouldPersistRule(updatedRule)) {
+        nextRules[normalizedPackage] = updatedRule;
+      } else {
+        nextRules.remove(normalizedPackage);
+      }
     }
 
-    final existingRule =
-        _rulesByPackage[normalizedPackage] ??
-        AppControlRule(packageName: normalizedPackage, vpnBlockEnabled: false);
-    final nextRule = existingRule.copyWith(
-      packageName: normalizedPackage,
-      alwaysBlocked: blockVpnInBrowsers,
-      vpnBlockEnabled: blockVpnInBrowsers,
-    );
-    final shouldPersistRule = _shouldPersistRule(nextRule);
-    final hadRule = _rulesByPackage.containsKey(normalizedPackage);
-    final nextRules = Map<String, AppControlRule>.from(_rulesByPackage);
-    if (shouldPersistRule) {
-      nextRules[normalizedPackage] = nextRule;
-    } else {
-      nextRules.remove(normalizedPackage);
+    if (changedCount == 0) {
+      return 0;
     }
 
     _alwaysBlockedPackages = nextSet;
@@ -222,21 +256,26 @@ class ParentalDashboardController extends ChangeNotifier {
 
     try {
       await _native.setBlockedApps(nextSet);
-      if (shouldPersistRule) {
-        await _native.upsertAppRule(nextRule);
-      } else if (hadRule) {
-        await _native.removeAppRule(normalizedPackage);
+      for (final normalizedPackage in normalizedPackages) {
+        final nextRule = nextRules[normalizedPackage];
+        if (nextRule != null) {
+          await _native.upsertAppRule(nextRule);
+          continue;
+        }
+        if (previousRules.containsKey(normalizedPackage)) {
+          await _native.removeAppRule(normalizedPackage);
+        }
       }
       await _native.syncProtection();
       await refreshProtectionStatus();
       _setBlockingPrerequisiteHint();
-      return true;
+      return changedCount;
     } catch (error, stackTrace) {
       _alwaysBlockedPackages = previousSet;
       _rulesByPackage = previousRules;
       _logError(error, stackTrace);
       _setError('No se pudo aplicar el bloqueo rapido.');
-      return false;
+      return -1;
     }
   }
 

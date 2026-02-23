@@ -1,6 +1,8 @@
 package com.evolcorp.control_parental
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import java.util.Calendar
 import java.util.Locale
 
@@ -97,6 +99,12 @@ object ProtectionPolicyEngine {
                 blocked.add(packageName)
             }
         }
+
+        // Hardening against DNS-over-HTTPS bypasses: if web blocking is active,
+        // also route browser apps through the blocking VPN path.
+        if (getWebBlockedPackages(context, nowMs).isNotEmpty()) {
+            blocked.addAll(resolveBrowserPackages(context))
+        }
         return blocked
     }
 
@@ -166,6 +174,16 @@ object ProtectionPolicyEngine {
         return raw.trim().lowercase(Locale.ROOT).takeIf { it.isNotBlank() }
     }
 
+    private fun resolveBrowserPackages(context: Context): Set<String> {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("http://example.com")).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+        }
+        val detected = context.packageManager.queryIntentActivities(intent, 0)
+            .mapNotNull { resolveInfo -> normalizePackageName(resolveInfo.activityInfo?.packageName) }
+            .toSet()
+        return detected + KNOWN_BROWSER_PACKAGES
+    }
+
     private fun allow(): BlockDecision {
         return BlockDecision(shouldBlock = false)
     }
@@ -199,6 +217,25 @@ object ProtectionPolicyEngine {
         "com.google.android.packageinstaller",
         "com.miui.packageinstaller",
         "com.samsung.android.packageinstaller"
+    )
+    private val KNOWN_BROWSER_PACKAGES = setOf(
+        "com.android.chrome",
+        "com.chrome.beta",
+        "com.chrome.dev",
+        "com.chrome.canary",
+        "com.sec.android.app.sbrowser",
+        "org.mozilla.firefox",
+        "org.mozilla.firefox_beta",
+        "org.mozilla.fenix",
+        "org.mozilla.focus",
+        "com.microsoft.emmx",
+        "com.opera.browser",
+        "com.opera.mini.native",
+        "com.brave.browser",
+        "com.duckduckgo.mobile.android",
+        "com.vivaldi.browser",
+        "com.kiwibrowser.browser",
+        "com.mi.globalbrowser"
     )
     private const val ONE_MINUTE_MS = 60_000L
 }
