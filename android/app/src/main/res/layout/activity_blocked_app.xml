@@ -21,7 +21,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="20dp"
-        android:text="Pausa activa"
+        android:text="Modo concentracion activo"
         android:textColor="#FFFFFF"
         android:textSize="30sp"
         android:textStyle="bold" />
@@ -31,7 +31,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:text="Esta app esta suspendida en tu modo enfoque:"
+        android:text="Esta app esta bloqueada temporalmente para ayudarte a mantener el enfoque:"
         android:textColor="#C9D2FF"
         android:textSize="16sp" />
 
@@ -58,7 +58,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="28dp"
-        android:text="Abrir panel de enfoque" />
+        android:text="Abrir panel de control" />
 
     <Button
         android:id="@+id/homeButton"

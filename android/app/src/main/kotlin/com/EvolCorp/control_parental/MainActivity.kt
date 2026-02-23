@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.VpnService
 import android.provider.Settings
 import android.text.TextUtils
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
@@ -22,255 +23,262 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             CHANNEL_NAME
         ).setMethodCallHandler { call, result ->
-            when (call.method) {
-                METHOD_BLOCK,
-                METHOD_BLOCK_APP -> {
-                    val packageName = extractPackageName(call)
-                    if (packageName.isNullOrBlank()) {
-                        result.error("INVALID_ARGUMENT", "packageName is required", null)
-                        return@setMethodCallHandler
+            try {
+                when (call.method) {
+                    METHOD_BLOCK,
+                    METHOD_BLOCK_APP -> {
+                        val packageName = extractPackageName(call)
+                        if (packageName.isNullOrBlank()) {
+                            result.error("INVALID_ARGUMENT", "packageName is required", null)
+                            return@setMethodCallHandler
+                        }
+                        BlockedAppsManager.block(this, packageName)
+                        syncProtection()
+                        result.success(null)
                     }
-                    BlockedAppsManager.block(this, packageName)
-                    syncProtection()
-                    result.success(null)
-                }
 
-                METHOD_UNBLOCK,
-                METHOD_UNBLOCK_APP -> {
-                    val packageName = extractPackageName(call)
-                    if (packageName.isNullOrBlank()) {
-                        result.error("INVALID_ARGUMENT", "packageName is required", null)
-                        return@setMethodCallHandler
+                    METHOD_UNBLOCK,
+                    METHOD_UNBLOCK_APP -> {
+                        val packageName = extractPackageName(call)
+                        if (packageName.isNullOrBlank()) {
+                            result.error("INVALID_ARGUMENT", "packageName is required", null)
+                            return@setMethodCallHandler
+                        }
+                        BlockedAppsManager.unblock(this, packageName)
+                        syncProtection()
+                        result.success(null)
                     }
-                    BlockedAppsManager.unblock(this, packageName)
-                    syncProtection()
-                    result.success(null)
-                }
 
-                METHOD_IS_BLOCKED -> {
-                    val packageName = extractPackageName(call)
-                    if (packageName.isNullOrBlank()) {
-                        result.error("INVALID_ARGUMENT", "packageName is required", null)
-                        return@setMethodCallHandler
+                    METHOD_IS_BLOCKED -> {
+                        val packageName = extractPackageName(call)
+                        if (packageName.isNullOrBlank()) {
+                            result.error("INVALID_ARGUMENT", "packageName is required", null)
+                            return@setMethodCallHandler
+                        }
+                        result.success(BlockedAppsManager.isBlocked(this, packageName))
                     }
-                    result.success(BlockedAppsManager.isBlocked(this, packageName))
-                }
 
-                METHOD_GET_BLOCKED_APPS -> {
-                    result.success(BlockedAppsManager.getBlockedApps(this).toList())
-                }
-
-                METHOD_SET_BLOCKED_APPS -> {
-                    val packageNames = call.argument<List<String>>(ARG_PACKAGE_NAMES) ?: emptyList()
-                    BlockedAppsManager.setBlockedApps(this, packageNames)
-                    syncProtection()
-                    result.success(null)
-                }
-
-                METHOD_GET_APP_RULES -> {
-                    val rules = ParentalPolicyStore.getRules(this)
-                        .values
-                        .sortedBy { it.packageName }
-                        .map(ParentalPolicyStore::toMap)
-                    result.success(rules)
-                }
-
-                METHOD_UPSERT_APP_RULE -> {
-                    val rawRule = call.argument<Map<String, Any?>>(ARG_RULE)
-                    if (rawRule == null) {
-                        result.error("INVALID_ARGUMENT", "rule is required", null)
-                        return@setMethodCallHandler
+                    METHOD_GET_BLOCKED_APPS -> {
+                        result.success(BlockedAppsManager.getBlockedApps(this).toList())
                     }
-                    val parsedRule = ParentalPolicyStore.fromMap(rawRule)
-                    if (parsedRule == null) {
-                        result.error("INVALID_ARGUMENT", "rule is invalid", null)
-                        return@setMethodCallHandler
+
+                    METHOD_SET_BLOCKED_APPS -> {
+                        val packageNames = call.argument<List<String>>(ARG_PACKAGE_NAMES) ?: emptyList()
+                        BlockedAppsManager.setBlockedApps(this, packageNames)
+                        syncProtection()
+                        result.success(null)
                     }
-                    ParentalPolicyStore.upsertRule(this, parsedRule)
-                    syncProtection()
-                    result.success(null)
-                }
 
-                METHOD_REMOVE_APP_RULE -> {
-                    val packageName = extractPackageName(call)
-                    if (packageName.isNullOrBlank()) {
-                        result.error("INVALID_ARGUMENT", "packageName is required", null)
-                        return@setMethodCallHandler
+                    METHOD_GET_APP_RULES -> {
+                        val rules = ParentalPolicyStore.getRules(this)
+                            .values
+                            .sortedBy { it.packageName }
+                            .map(ParentalPolicyStore::toMap)
+                        result.success(rules)
                     }
-                    ParentalPolicyStore.removeRule(this, packageName)
-                    syncProtection()
-                    result.success(null)
-                }
 
-                METHOD_IS_ACCESSIBILITY_ENABLED -> {
-                    result.success(isAccessibilityServiceEnabled())
-                }
-
-                METHOD_OPEN_ACCESSIBILITY_SETTINGS -> {
-                    openAccessibilitySettings()
-                    result.success(null)
-                }
-
-                METHOD_IS_USAGE_ACCESS_GRANTED -> {
-                    result.success(UsageStatsReporter.hasUsageStatsPermission(this))
-                }
-
-                METHOD_OPEN_USAGE_ACCESS_SETTINGS -> {
-                    openUsageAccessSettings()
-                    result.success(null)
-                }
-
-                METHOD_IS_DEVICE_ADMIN_ENABLED -> {
-                    result.success(isDeviceAdminEnabled())
-                }
-
-                METHOD_REQUEST_DEVICE_ADMIN -> {
-                    requestDeviceAdmin()
-                    result.success(null)
-                }
-
-                METHOD_OPEN_DEVICE_ADMIN_SETTINGS -> {
-                    openDeviceAdminSettings()
-                    result.success(null)
-                }
-
-                METHOD_HAS_PARENTAL_PIN -> {
-                    result.success(ParentalPolicyStore.hasPin(this))
-                }
-
-                METHOD_SET_PARENTAL_PIN -> {
-                    val pin = call.argument<String>(ARG_PIN).orEmpty()
-                    result.success(ParentalPolicyStore.setPin(this, pin))
-                }
-
-                METHOD_VERIFY_PARENTAL_PIN -> {
-                    val pin = call.argument<String>(ARG_PIN).orEmpty()
-                    result.success(ParentalPolicyStore.verifyPin(this, pin))
-                }
-
-                METHOD_CHANGE_PARENTAL_PIN -> {
-                    val oldPin = call.argument<String>(ARG_OLD_PIN).orEmpty()
-                    val newPin = call.argument<String>(ARG_NEW_PIN).orEmpty()
-                    val hasPin = ParentalPolicyStore.hasPin(this)
-                    if (hasPin && !ParentalPolicyStore.verifyPin(this, oldPin)) {
-                        result.success(false)
-                        return@setMethodCallHandler
+                    METHOD_UPSERT_APP_RULE -> {
+                        val rawRule = call.argument<Map<String, Any?>>(ARG_RULE)
+                        if (rawRule == null) {
+                            result.error("INVALID_ARGUMENT", "rule is required", null)
+                            return@setMethodCallHandler
+                        }
+                        val parsedRule = ParentalPolicyStore.fromMap(rawRule)
+                        if (parsedRule == null) {
+                            result.error("INVALID_ARGUMENT", "rule is invalid", null)
+                            return@setMethodCallHandler
+                        }
+                        ParentalPolicyStore.upsertRule(this, parsedRule)
+                        syncProtection()
+                        result.success(null)
                     }
-                    result.success(ParentalPolicyStore.setPin(this, newPin))
-                }
 
-                METHOD_CLEAR_PARENTAL_PIN -> {
-                    val pin = call.argument<String>(ARG_PIN).orEmpty()
-                    if (!ParentalPolicyStore.verifyPin(this, pin)) {
-                        result.success(false)
-                        return@setMethodCallHandler
+                    METHOD_REMOVE_APP_RULE -> {
+                        val packageName = extractPackageName(call)
+                        if (packageName.isNullOrBlank()) {
+                            result.error("INVALID_ARGUMENT", "packageName is required", null)
+                            return@setMethodCallHandler
+                        }
+                        ParentalPolicyStore.removeRule(this, packageName)
+                        syncProtection()
+                        result.success(null)
                     }
-                    ParentalPolicyStore.clearPin(this)
-                    result.success(true)
-                }
 
-                METHOD_GET_SECURITY_SETTINGS -> {
-                    result.success(
-                        ParentalPolicyStore.settingsToMap(
-                            ParentalPolicyStore.getSettings(this)
+                    METHOD_IS_ACCESSIBILITY_ENABLED -> {
+                        result.success(isAccessibilityServiceEnabled())
+                    }
+
+                    METHOD_OPEN_ACCESSIBILITY_SETTINGS -> {
+                        openAccessibilitySettings()
+                        result.success(null)
+                    }
+
+                    METHOD_IS_USAGE_ACCESS_GRANTED -> {
+                        result.success(UsageStatsReporter.hasUsageStatsPermission(this))
+                    }
+
+                    METHOD_OPEN_USAGE_ACCESS_SETTINGS -> {
+                        openUsageAccessSettings()
+                        result.success(null)
+                    }
+
+                    METHOD_IS_DEVICE_ADMIN_ENABLED -> {
+                        result.success(isDeviceAdminEnabled())
+                    }
+
+                    METHOD_REQUEST_DEVICE_ADMIN -> {
+                        requestDeviceAdmin()
+                        result.success(null)
+                    }
+
+                    METHOD_OPEN_DEVICE_ADMIN_SETTINGS -> {
+                        openDeviceAdminSettings()
+                        result.success(null)
+                    }
+
+                    METHOD_HAS_PARENTAL_PIN -> {
+                        result.success(ParentalPolicyStore.hasPin(this))
+                    }
+
+                    METHOD_SET_PARENTAL_PIN -> {
+                        val pin = call.argument<String>(ARG_PIN).orEmpty()
+                        result.success(ParentalPolicyStore.setPin(this, pin))
+                    }
+
+                    METHOD_VERIFY_PARENTAL_PIN -> {
+                        val pin = call.argument<String>(ARG_PIN).orEmpty()
+                        result.success(ParentalPolicyStore.verifyPin(this, pin))
+                    }
+
+                    METHOD_CHANGE_PARENTAL_PIN -> {
+                        val oldPin = call.argument<String>(ARG_OLD_PIN).orEmpty()
+                        val newPin = call.argument<String>(ARG_NEW_PIN).orEmpty()
+                        val hasPin = ParentalPolicyStore.hasPin(this)
+                        if (hasPin && !ParentalPolicyStore.verifyPin(this, oldPin)) {
+                            result.success(false)
+                            return@setMethodCallHandler
+                        }
+                        result.success(ParentalPolicyStore.setPin(this, newPin))
+                    }
+
+                    METHOD_CLEAR_PARENTAL_PIN -> {
+                        val pin = call.argument<String>(ARG_PIN).orEmpty()
+                        if (!ParentalPolicyStore.verifyPin(this, pin)) {
+                            result.success(false)
+                            return@setMethodCallHandler
+                        }
+                        ParentalPolicyStore.clearPin(this)
+                        result.success(true)
+                    }
+
+                    METHOD_GET_SECURITY_SETTINGS -> {
+                        result.success(
+                            ParentalPolicyStore.settingsToMap(
+                                ParentalPolicyStore.getSettings(this)
+                            )
                         )
-                    )
-                }
+                    }
 
-                METHOD_UPDATE_SECURITY_SETTINGS -> {
-                    val rawSettings = call.argument<Map<String, Any?>>(ARG_SETTINGS).orEmpty()
-                    val current = ParentalPolicyStore.getSettings(this)
-                    val merged = current.copy(
-                        blockSettingsPackages = rawSettings["blockSettingsPackages"] as? Boolean
-                            ?: current.blockSettingsPackages,
-                        protectUninstallFlow = rawSettings["protectUninstallFlow"] as? Boolean
-                            ?: current.protectUninstallFlow,
-                        protectionEnabled = rawSettings["protectionEnabled"] as? Boolean
-                            ?: current.protectionEnabled
-                    )
-                    ParentalPolicyStore.updateSettings(this, merged)
-                    syncProtection()
-                    result.success(ParentalPolicyStore.settingsToMap(merged))
-                }
-
-                METHOD_SET_PROTECTION_ENABLED -> {
-                    val enabled = call.argument<Boolean>(ARG_ENABLED) ?: true
-                    ParentalPolicyStore.setProtectionEnabled(this, enabled)
-                    syncProtection()
-                    result.success(null)
-                }
-
-                METHOD_IS_PROTECTION_ENABLED -> {
-                    result.success(ParentalPolicyStore.isProtectionEnabled(this))
-                }
-
-                METHOD_START_PROTECTION_SERVICE -> {
-                    ProtectionForegroundService.start(this)
-                    result.success(null)
-                }
-
-                METHOD_STOP_PROTECTION_SERVICE -> {
-                    ProtectionForegroundService.stop(this)
-                    AppBlockVpnService.stop(this)
-                    result.success(null)
-                }
-
-                METHOD_IS_PROTECTION_SERVICE_RUNNING -> {
-                    result.success(ProtectionForegroundService.isRunning())
-                }
-
-                METHOD_GET_PROTECTION_STATUS -> {
-                    result.success(buildProtectionStatus())
-                }
-
-                METHOD_GET_SECURITY_EVENTS -> {
-                    val limit = call.argument<Int>(ARG_LIMIT) ?: 120
-                    result.success(
-                        ParentalPolicyStore.getEvents(this, limit).map(ParentalPolicyStore::eventToMap)
-                    )
-                }
-
-                METHOD_CLEAR_SECURITY_EVENTS -> {
-                    ParentalPolicyStore.clearEvents(this)
-                    result.success(null)
-                }
-
-                METHOD_GET_USAGE_REPORT -> {
-                    val days = call.argument<Int>(ARG_DAYS) ?: 7
-                    val packageNames = call.argument<List<String>>(ARG_PACKAGE_NAMES).orEmpty().toSet()
-                    result.success(
-                        UsageStatsReporter.getUsageReport(
-                            context = this,
-                            days = days,
-                            packageFilter = packageNames
+                    METHOD_UPDATE_SECURITY_SETTINGS -> {
+                        val rawSettings = call.argument<Map<String, Any?>>(ARG_SETTINGS).orEmpty()
+                        val current = ParentalPolicyStore.getSettings(this)
+                        val merged = current.copy(
+                            blockSettingsPackages = rawSettings["blockSettingsPackages"] as? Boolean
+                                ?: current.blockSettingsPackages,
+                            protectUninstallFlow = rawSettings["protectUninstallFlow"] as? Boolean
+                                ?: current.protectUninstallFlow,
+                            protectionEnabled = rawSettings["protectionEnabled"] as? Boolean
+                                ?: current.protectionEnabled
                         )
-                    )
-                }
+                        ParentalPolicyStore.updateSettings(this, merged)
+                        syncProtection()
+                        result.success(ParentalPolicyStore.settingsToMap(merged))
+                    }
 
-                METHOD_REQUEST_VPN_PERMISSION -> {
-                    requestVpnPermission(result)
-                }
+                    METHOD_SET_PROTECTION_ENABLED -> {
+                        val enabled = call.argument<Boolean>(ARG_ENABLED) ?: true
+                        ParentalPolicyStore.setProtectionEnabled(this, enabled)
+                        syncProtection()
+                        result.success(null)
+                    }
 
-                METHOD_START_VPN_BLOCKING -> {
-                    AppBlockVpnService.start(this)
-                    result.success(null)
-                }
+                    METHOD_IS_PROTECTION_ENABLED -> {
+                        result.success(ParentalPolicyStore.isProtectionEnabled(this))
+                    }
 
-                METHOD_STOP_VPN_BLOCKING -> {
-                    AppBlockVpnService.stop(this)
-                    result.success(null)
-                }
+                    METHOD_START_PROTECTION_SERVICE -> {
+                        ProtectionForegroundService.start(this)
+                        result.success(null)
+                    }
 
-                METHOD_IS_VPN_BLOCKING_ACTIVE -> {
-                    result.success(AppBlockVpnService.isRunning())
-                }
+                    METHOD_STOP_PROTECTION_SERVICE -> {
+                        ProtectionForegroundService.stop(this)
+                        AppBlockVpnService.stop(this)
+                        result.success(null)
+                    }
 
-                METHOD_SYNC_PROTECTION -> {
-                    syncProtection()
-                    result.success(null)
-                }
+                    METHOD_IS_PROTECTION_SERVICE_RUNNING -> {
+                        result.success(ProtectionForegroundService.isRunning())
+                    }
 
-                else -> result.notImplemented()
+                    METHOD_GET_PROTECTION_STATUS -> {
+                        result.success(buildProtectionStatus())
+                    }
+
+                    METHOD_GET_SECURITY_EVENTS -> {
+                        val limit = call.argument<Int>(ARG_LIMIT) ?: 120
+                        result.success(
+                            ParentalPolicyStore.getEvents(this, limit).map(ParentalPolicyStore::eventToMap)
+                        )
+                    }
+
+                    METHOD_CLEAR_SECURITY_EVENTS -> {
+                        ParentalPolicyStore.clearEvents(this)
+                        result.success(null)
+                    }
+
+                    METHOD_GET_USAGE_REPORT -> {
+                        val days = call.argument<Int>(ARG_DAYS) ?: 7
+                        val packageNames = call.argument<List<String>>(ARG_PACKAGE_NAMES).orEmpty().toSet()
+                        result.success(
+                            UsageStatsReporter.getUsageReport(
+                                context = this,
+                                days = days,
+                                packageFilter = packageNames
+                            )
+                        )
+                    }
+
+                    METHOD_REQUEST_VPN_PERMISSION -> {
+                        requestVpnPermission(result)
+                    }
+
+                    METHOD_START_VPN_BLOCKING -> {
+                        AppBlockVpnService.start(this)
+                        result.success(null)
+                    }
+
+                    METHOD_STOP_VPN_BLOCKING -> {
+                        AppBlockVpnService.stop(this)
+                        result.success(null)
+                    }
+
+                    METHOD_IS_VPN_BLOCKING_ACTIVE -> {
+                        result.success(AppBlockVpnService.isRunning())
+                    }
+
+                    METHOD_SYNC_PROTECTION -> {
+                        syncProtection()
+                        result.success(null)
+                    }
+
+                    else -> result.notImplemented()
+                }
+            } catch (error: Throwable) {
+                Log.e(TAG, "Method channel error: ${call.method}", error)
+                runCatching {
+                    result.error("NATIVE_ERROR", error.message ?: "Native error", null)
+                }
             }
         }
     }
@@ -298,7 +306,11 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun syncProtection() {
-        ProtectionForegroundService.sync(this)
+        runCatching {
+            ProtectionForegroundService.sync(this)
+        }.onFailure { error ->
+            Log.e(TAG, "syncProtection failed", error)
+        }
     }
 
     private fun requestVpnPermission(result: MethodChannel.Result) {
@@ -401,6 +413,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private companion object {
+        private const val TAG = "MainActivity"
         private const val CHANNEL_NAME = "com.evolcorp.control_parental/blocked_apps"
         private const val METHOD_BLOCK = "block"
         private const val METHOD_UNBLOCK = "unblock"

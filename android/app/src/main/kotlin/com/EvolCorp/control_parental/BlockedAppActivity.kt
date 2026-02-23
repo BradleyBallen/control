@@ -23,12 +23,16 @@ class BlockedAppActivity : Activity() {
 
         targetPackage = intent.getStringExtra(EXTRA_PACKAGE_NAME)
         val reason = intent.getStringExtra(EXTRA_REASON)
+        val titleText = findViewById<TextView>(R.id.titleText)
+        val blockSubtitleText = findViewById<TextView>(R.id.blockSubtitleText)
         val blockedPackageText = findViewById<TextView>(R.id.blockedPackageText)
         val reasonText = findViewById<TextView>(R.id.reasonText)
         val openDashboardButton = findViewById<Button>(R.id.openDashboardButton)
         val homeButton = findViewById<Button>(R.id.homeButton)
 
-        blockedPackageText.text = targetPackage ?: "Aplicacion"
+        titleText.text = "Modo concentracion activo"
+        blockSubtitleText.text = "Esta app esta bloqueada temporalmente para ayudarte a mantener el enfoque."
+        blockedPackageText.text = resolveAppName(targetPackage)
         reasonText.text = reasonToMessage(reason)
 
         ParentalPolicyStore.addEvent(
@@ -76,13 +80,23 @@ class BlockedAppActivity : Activity() {
 
     private fun reasonToMessage(reason: String?): String {
         return when (reason?.trim()?.lowercase(Locale.ROOT)) {
-            ProtectionPolicyEngine.REASON_ALWAYS_BLOCKED -> "La pausaste manualmente para mantener el enfoque."
-            ProtectionPolicyEngine.REASON_OUTSIDE_SCHEDULE -> "Esta app esta fuera del horario que definiste."
+            ProtectionPolicyEngine.REASON_ALWAYS_BLOCKED -> "La pausaste manualmente para proteger tu concentracion."
+            ProtectionPolicyEngine.REASON_OUTSIDE_SCHEDULE -> "Esta app esta fuera del horario permitido."
             ProtectionPolicyEngine.REASON_DAILY_LIMIT_REACHED -> "Ya alcanzaste el limite diario configurado."
-            ProtectionPolicyEngine.REASON_SETTINGS_PROTECTED -> "Los ajustes estan protegidos mientras el modo enfoque esta activo."
-            ProtectionPolicyEngine.REASON_UNINSTALL_PROTECTED -> "La desinstalacion esta protegida mientras el modo enfoque esta activo."
-            else -> "Esta app esta suspendida por tus reglas de autocontrol."
+            ProtectionPolicyEngine.REASON_SETTINGS_PROTECTED -> "Los ajustes estan protegidos mientras el modo concentracion esta activo."
+            ProtectionPolicyEngine.REASON_UNINSTALL_PROTECTED -> "La desinstalacion esta protegida mientras el modo concentracion esta activo."
+            else -> "Esta app esta bloqueada por tus reglas de concentracion."
         }
+    }
+
+    private fun resolveAppName(packageName: String?): String {
+        if (packageName.isNullOrBlank()) {
+            return "Aplicacion"
+        }
+        return runCatching {
+            val appInfo = packageManager.getApplicationInfo(packageName, 0)
+            packageManager.getApplicationLabel(appInfo).toString().ifBlank { packageName }
+        }.getOrElse { packageName }
     }
 
     companion object {

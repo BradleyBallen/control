@@ -8,6 +8,7 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import java.io.FileInputStream
@@ -169,16 +170,25 @@ class AppBlockVpnService : VpnService() {
                 return
             }
             val intent = Intent(context, AppBlockVpnService::class.java)
-            ContextCompat.startForegroundService(context, intent)
+            runCatching {
+                ContextCompat.startForegroundService(context, intent)
+            }.onFailure { error ->
+                Log.e(TAG, "Failed to start AppBlockVpnService", error)
+            }
         }
 
         fun stop(context: Context) {
-            context.stopService(Intent(context, AppBlockVpnService::class.java))
+            runCatching {
+                context.stopService(Intent(context, AppBlockVpnService::class.java))
+            }.onFailure { error ->
+                Log.e(TAG, "Failed to stop AppBlockVpnService", error)
+            }
             isActive = false
         }
 
         private const val VPN_SESSION_NAME = "ControlDeUsoVpnBlock"
         private const val NOTIFICATION_CHANNEL_ID = "vpn_blocking_channel"
         private const val NOTIFICATION_ID = 1042
+        private const val TAG = "AppBlockVpnService"
     }
 }

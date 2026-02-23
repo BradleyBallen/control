@@ -14,6 +14,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.provider.Settings
 import android.text.TextUtils
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import java.util.concurrent.ConcurrentHashMap
@@ -170,11 +171,19 @@ class ProtectionForegroundService : Service() {
 
         fun start(context: Context) {
             val intent = Intent(context, ProtectionForegroundService::class.java)
-            ContextCompat.startForegroundService(context, intent)
+            runCatching {
+                ContextCompat.startForegroundService(context, intent)
+            }.onFailure { error ->
+                Log.e(TAG, "Failed to start ProtectionForegroundService", error)
+            }
         }
 
         fun stop(context: Context) {
-            context.stopService(Intent(context, ProtectionForegroundService::class.java))
+            runCatching {
+                context.stopService(Intent(context, ProtectionForegroundService::class.java))
+            }.onFailure { error ->
+                Log.e(TAG, "Failed to stop ProtectionForegroundService", error)
+            }
             isRunning = false
         }
 
@@ -195,5 +204,6 @@ class ProtectionForegroundService : Service() {
         private const val EVENT_USAGE_ACCESS_MISSING = "usage_access_missing"
         private const val EVENT_DEVICE_ADMIN_DISABLED = "device_admin_disabled"
         private const val EVENT_SAFE_MODE_DETECTED = "safe_mode_detected"
+        private const val TAG = "ProtectionService"
     }
 }
