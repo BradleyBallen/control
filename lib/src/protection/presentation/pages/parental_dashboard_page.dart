@@ -284,12 +284,86 @@ class _AppsTab extends StatefulWidget {
 
 class _AppsTabState extends State<_AppsTab> {
   String _query = '';
+  bool _isBlockingSocialApps = false;
+
+  static const Set<String> _socialPackages = <String>{
+    'com.facebook.katana',
+    'com.facebook.lite',
+    'com.instagram.android',
+    'com.zhiliaoapp.musically',
+    'com.snapchat.android',
+    'com.twitter.android',
+    'com.reddit.frontpage',
+    'com.pinterest',
+    'org.telegram.messenger',
+    'com.whatsapp',
+    'com.whatsapp.w4b',
+    'com.viber.voip',
+    'com.discord',
+    'com.linkedin.android',
+    'com.skype.raider',
+    'com.tumblr',
+    'com.bereal.ft',
+    'com.ss.android.ugc.trill',
+    'com.ss.android.ugc.aweme',
+    'com.ss.android.ugc.trill.go',
+    'com.microsoft.teams',
+  };
+
+  static const List<String> _socialPackageKeywords = <String>[
+    'facebook',
+    'instagram',
+    'tiktok',
+    'musically',
+    'snapchat',
+    'twitter',
+    'reddit',
+    'pinterest',
+    'telegram',
+    'whatsapp',
+    'discord',
+    'linkedin',
+    'skype',
+    'tumblr',
+    'bereal',
+    'threads',
+    'messenger',
+    'wechat',
+    'line.',
+    'signal',
+  ];
+
+  static const List<String> _socialNameKeywords = <String>[
+    'facebook',
+    'instagram',
+    'tiktok',
+    'snapchat',
+    'x ',
+    'twitter',
+    'reddit',
+    'pinterest',
+    'telegram',
+    'whatsapp',
+    'discord',
+    'linkedin',
+    'skype',
+    'tumblr',
+    'bereal',
+    'threads',
+    'messenger',
+    'wechat',
+    'line',
+    'signal',
+  ];
 
   @override
   Widget build(BuildContext context) {
     final normalizedQuery = _query.trim().toLowerCase();
     final usageByPackage = widget.controller.usageMinutesTodayByPackage;
     final usagePermissionGranted = widget.controller.usageAccessGranted;
+    final allSocialApps = widget.controller.apps
+        .where(_isSocialApp)
+        .toList(growable: false);
     final apps = widget.controller.apps.where((app) {
       if (normalizedQuery.isEmpty) {
         return true;
@@ -322,6 +396,29 @@ class _AppsTabState extends State<_AppsTab> {
               child: Text(
                 'Activa el switch para pausar una app ahora. Toca una app para definir limite diario u horario.',
                 style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: allSocialApps.isEmpty || _isBlockingSocialApps
+                  ? null
+                  : () => _blockAllSocialApps(allSocialApps),
+              icon: _isBlockingSocialApps
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.group_off),
+              label: Text(
+                allSocialApps.isEmpty
+                    ? 'No se detectaron redes sociales'
+                    : 'Bloquear redes sociales (${allSocialApps.length})',
               ),
             ),
           ),
@@ -393,7 +490,52 @@ class _AppsTabState extends State<_AppsTab> {
     if (parts.isEmpty) {
       return 'Regla guardada sin restricciones activas';
     }
-    return parts.join(' | ');
+      return parts.join(' | ');
+  }
+
+  bool _isSocialApp(InstalledApp app) {
+    final packageName = app.packageName.toLowerCase();
+    final appName = app.appName.toLowerCase();
+    if (_socialPackages.contains(packageName)) {
+      return true;
+    }
+    if (_socialPackageKeywords.any(packageName.contains)) {
+      return true;
+    }
+    return _socialNameKeywords.any(appName.contains);
+  }
+
+  Future<void> _blockAllSocialApps(List<InstalledApp> socialApps) async {
+    if (_isBlockingSocialApps) {
+      return;
+    }
+    final socialPackages = socialApps
+        .map((app) => app.packageName.toLowerCase())
+        .toSet();
+    if (socialPackages.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _isBlockingSocialApps = true;
+    });
+    final newlyBlocked = await widget.controller.setAlwaysBlockedForPackages(
+      socialPackages,
+      true,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isBlockingSocialApps = false;
+    });
+
+    final message = newlyBlocked == 0
+        ? 'Las redes sociales detectadas ya estaban pausadas.'
+        : 'Se pausaron $newlyBlocked apps de redes sociales.';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 }
 

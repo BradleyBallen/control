@@ -139,14 +139,30 @@ class ParentalDashboardController extends ChangeNotifier {
   }
 
   Future<void> setAlwaysBlocked(String packageName, bool blocked) async {
-    final normalizedPackage = packageName.toLowerCase();
+    await setAlwaysBlockedForPackages(<String>{packageName}, blocked);
+  }
+
+  Future<int> setAlwaysBlockedForPackages(
+    Iterable<String> packageNames,
+    bool blocked,
+  ) async {
+    final normalizedPackages = packageNames
+        .map((packageName) => packageName.trim().toLowerCase())
+        .where((packageName) => packageName.isNotEmpty)
+        .toSet();
+    if (normalizedPackages.isEmpty) {
+      return 0;
+    }
+
     final previousSet = Set<String>.from(_alwaysBlockedPackages);
     final nextSet = Set<String>.from(_alwaysBlockedPackages);
-    if (blocked) {
-      nextSet.add(normalizedPackage);
-    } else {
-      nextSet.remove(normalizedPackage);
+    final changedCount = blocked
+        ? _addAllAndCount(nextSet, normalizedPackages)
+        : _removeAllAndCount(nextSet, normalizedPackages);
+    if (changedCount == 0) {
+      return 0;
     }
+
     _alwaysBlockedPackages = nextSet;
     notifyListeners();
     try {
@@ -154,10 +170,12 @@ class ParentalDashboardController extends ChangeNotifier {
       await _native.syncProtection();
       await refreshProtectionStatus();
       _setBlockingPrerequisiteHint();
+      return changedCount;
     } catch (error, stackTrace) {
       _alwaysBlockedPackages = previousSet;
       _logError(error, stackTrace);
       _setError('No se pudo actualizar bloqueo permanente.');
+      return 0;
     }
   }
 
@@ -385,5 +403,25 @@ class ParentalDashboardController extends ChangeNotifier {
     _errorMessage =
         'Bloqueo guardado. Activa Accesibilidad para bloquear apps al abrirlas.';
     notifyListeners();
+  }
+
+  int _addAllAndCount(Set<String> target, Set<String> values) {
+    var addedCount = 0;
+    for (final value in values) {
+      if (target.add(value)) {
+        addedCount++;
+      }
+    }
+    return addedCount;
+  }
+
+  int _removeAllAndCount(Set<String> target, Set<String> values) {
+    var removedCount = 0;
+    for (final value in values) {
+      if (target.remove(value)) {
+        removedCount++;
+      }
+    }
+    return removedCount;
   }
 }
