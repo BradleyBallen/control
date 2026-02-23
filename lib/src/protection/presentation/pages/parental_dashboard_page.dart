@@ -364,6 +364,11 @@ class _AppsTabState extends State<_AppsTab> {
     final allSocialApps = widget.controller.apps
         .where(_isSocialApp)
         .toList(growable: false);
+    final blockedSocialCount = allSocialApps
+        .where((app) => widget.controller.isAlwaysBlocked(app.packageName))
+        .length;
+    final shouldBlockSocialApps =
+        blockedSocialCount != allSocialApps.length && allSocialApps.isNotEmpty;
     final apps = widget.controller.apps.where((app) {
       if (normalizedQuery.isEmpty) {
         return true;
@@ -407,18 +412,27 @@ class _AppsTabState extends State<_AppsTab> {
             child: ElevatedButton.icon(
               onPressed: allSocialApps.isEmpty || _isBlockingSocialApps
                   ? null
-                  : () => _blockAllSocialApps(allSocialApps),
+                  : () => _toggleSocialApps(
+                      allSocialApps,
+                      shouldBlock: shouldBlockSocialApps,
+                    ),
               icon: _isBlockingSocialApps
                   ? const SizedBox(
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.group_off),
+                  : Icon(
+                      shouldBlockSocialApps
+                          ? Icons.group_off
+                          : Icons.group_add_outlined,
+                    ),
               label: Text(
                 allSocialApps.isEmpty
                     ? 'No se detectaron redes sociales'
-                    : 'Bloquear redes sociales (${allSocialApps.length})',
+                    : shouldBlockSocialApps
+                    ? 'Bloquear redes sociales (${allSocialApps.length})'
+                    : 'Desbloquear redes sociales (${allSocialApps.length})',
               ),
             ),
           ),
@@ -505,7 +519,10 @@ class _AppsTabState extends State<_AppsTab> {
     return _socialNameKeywords.any(appName.contains);
   }
 
-  Future<void> _blockAllSocialApps(List<InstalledApp> socialApps) async {
+  Future<void> _toggleSocialApps(
+    List<InstalledApp> socialApps, {
+    required bool shouldBlock,
+  }) async {
     if (_isBlockingSocialApps) {
       return;
     }
@@ -521,7 +538,7 @@ class _AppsTabState extends State<_AppsTab> {
     });
     final newlyBlocked = await widget.controller.setAlwaysBlockedForPackages(
       socialPackages,
-      true,
+      shouldBlock,
     );
     if (!mounted) {
       return;
@@ -530,9 +547,13 @@ class _AppsTabState extends State<_AppsTab> {
       _isBlockingSocialApps = false;
     });
 
-    final message = newlyBlocked == 0
-        ? 'Las redes sociales detectadas ya estaban pausadas.'
-        : 'Se pausaron $newlyBlocked apps de redes sociales.';
+    final message = shouldBlock
+        ? newlyBlocked == 0
+              ? 'Las redes sociales detectadas ya estaban pausadas.'
+              : 'Se pausaron $newlyBlocked apps de redes sociales.'
+        : newlyBlocked == 0
+        ? 'No habia redes sociales pausadas para desbloquear.'
+        : 'Se desbloquearon $newlyBlocked apps de redes sociales.';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
