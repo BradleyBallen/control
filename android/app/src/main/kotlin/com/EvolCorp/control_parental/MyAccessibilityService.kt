@@ -31,23 +31,28 @@ class MyAccessibilityService : AccessibilityService() {
     private var lastBlockTimestampMs: Long = 0L
 
     override fun onServiceConnected() {
-        super.onServiceConnected()
-        serviceInfo = serviceInfo?.apply {
-            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                AccessibilityEvent.TYPE_WINDOWS_CHANGED or
-                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-            feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-            notificationTimeout = 100
-            flags = flags or
-                AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
-                AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        runCatching {
+            super.onServiceConnected()
+            serviceInfo = serviceInfo?.apply {
+                eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                    AccessibilityEvent.TYPE_WINDOWS_CHANGED or
+                    AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
+                notificationTimeout = 100
+                flags = flags or
+                    AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
+                    AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+            }
+            startForegroundPolling()
+            ProtectionForegroundService.sync(this)
+        }.onFailure {
+            Log.e(TAG, "Service connection setup failed", it)
         }
-        startForegroundPolling()
-        ProtectionForegroundService.sync(this)
     }
 
     override fun onDestroy() {
-        stopForegroundPolling()
+        runCatching { stopForegroundPolling() }
+            .onFailure { Log.e(TAG, "Failed to stop polling", it) }
         super.onDestroy()
     }
 
@@ -168,32 +173,36 @@ class MyAccessibilityService : AccessibilityService() {
         reason: String?,
         isSecurityPackage: Boolean
     ) {
-        val now = SystemClock.elapsedRealtime()
-        if (foregroundPackage == lastBlockedPackage && now - lastBlockTimestampMs < BLOCK_COOLDOWN_MS) {
-            return
-        }
-        lastBlockedPackage = foregroundPackage
-        lastBlockTimestampMs = now
-
-        ParentalPolicyStore.addEvent(
-            context = this,
-            type = if (isSecurityPackage) EVENT_SECURITY_ATTEMPT else EVENT_BLOCKED_ATTEMPT,
-            packageName = foregroundPackage,
-            reason = reason,
-            details = "Bloqueo aplicado desde Accessibility"
-        )
-
-        val movedToHome = performGlobalAction(GLOBAL_ACTION_HOME)
-        if (!movedToHome) {
-            performGlobalAction(GLOBAL_ACTION_BACK)
-            val fallbackIntent = Intent(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_HOME)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        runCatching {
+            val now = SystemClock.elapsedRealtime()
+            if (foregroundPackage == lastBlockedPackage && now - lastBlockTimestampMs < BLOCK_COOLDOWN_MS) {
+                return
             }
-            runCatching { startActivity(fallbackIntent) }
+            lastBlockedPackage = foregroundPackage
+            lastBlockTimestampMs = now
+
+            ParentalPolicyStore.addEvent(
+                context = this,
+                type = if (isSecurityPackage) EVENT_SECURITY_ATTEMPT else EVENT_BLOCKED_ATTEMPT,
+                packageName = foregroundPackage,
+                reason = reason,
+                details = "Bloqueo aplicado desde Accessibility"
+            )
+
+            val movedToHome = performGlobalAction(GLOBAL_ACTION_HOME)
+            if (!movedToHome) {
+                performGlobalAction(GLOBAL_ACTION_BACK)
+                val fallbackIntent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                runCatching { startActivity(fallbackIntent) }
+            }
+            BlockedAppActivity.launch(this, foregroundPackage, reason)
+            runCatching { AppBlockVpnService.sync(this) }
+        }.onFailure {
+            Log.e(TAG, "Failed to block package: $foregroundPackage", it)
         }
-        BlockedAppActivity.launch(this, foregroundPackage, reason)
-        AppBlockVpnService.sync(this)
     }
 
     private companion object {

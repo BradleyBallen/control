@@ -21,40 +21,52 @@ class AppBlockVpnService : VpnService() {
     private val running = AtomicBoolean(false)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!ParentalPolicyStore.isProtectionEnabled(this)) {
+        return runCatching {
+            if (!ParentalPolicyStore.isProtectionEnabled(this)) {
+                stopVpnTunnel()
+                stopSelf()
+                return@runCatching START_NOT_STICKY
+            }
+
+            val blockedApps = ProtectionPolicyEngine.getVpnBlockedPackages(this)
+            if (blockedApps.isEmpty()) {
+                stopVpnTunnel()
+                stopSelf()
+                return@runCatching START_NOT_STICKY
+            }
+
+            val vpnPrepared = VpnService.prepare(this) == null
+            if (!vpnPrepared) {
+                stopVpnTunnel()
+                stopSelf()
+                return@runCatching START_NOT_STICKY
+            }
+
+            startForeground(NOTIFICATION_ID, buildNotification())
+            establishVpnTunnel(blockedApps)
+            isActive = vpnInterface != null
+            START_STICKY
+        }.getOrElse { error ->
+            Log.e(TAG, "AppBlockVpnService onStartCommand failed", error)
             stopVpnTunnel()
             stopSelf()
-            return START_NOT_STICKY
+            START_NOT_STICKY
         }
-
-        val blockedApps = ProtectionPolicyEngine.getVpnBlockedPackages(this)
-        if (blockedApps.isEmpty()) {
-            stopVpnTunnel()
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
-        val vpnPrepared = VpnService.prepare(this) == null
-        if (!vpnPrepared) {
-            stopVpnTunnel()
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
-        startForeground(NOTIFICATION_ID, buildNotification())
-        establishVpnTunnel(blockedApps)
-        isActive = vpnInterface != null
-        return START_STICKY
     }
 
     override fun onDestroy() {
-        stopVpnTunnel()
+        runCatching { stopVpnTunnel() }
+            .onFailure { error -> Log.e(TAG, "AppBlockVpnService onDestroy failed", error) }
         super.onDestroy()
     }
 
     override fun onRevoke() {
-        stopVpnTunnel()
-        stopSelf()
+        runCatching {
+            stopVpnTunnel()
+            stopSelf()
+        }.onFailure { error ->
+            Log.e(TAG, "AppBlockVpnService onRevoke failed", error)
+        }
         super.onRevoke()
     }
 

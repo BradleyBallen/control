@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../../../apps/domain/entities/installed_app.dart';
@@ -324,6 +326,14 @@ class _AppsTabState extends State<_AppsTab> {
             ),
           ),
         ),
+        if (widget.controller.errorMessage != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              widget.controller.errorMessage!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
         Expanded(
           child: ListView.builder(
             itemCount: apps.length,
@@ -337,6 +347,7 @@ class _AppsTabState extends State<_AppsTab> {
                   ? 'Hoy: $usageMinutes min'
                   : 'Hoy: sin permiso de uso';
               return ListTile(
+                leading: _InstalledAppIcon(iconBytes: app.iconBytes),
                 title: Text(
                   app.appName,
                   maxLines: 1,
@@ -383,6 +394,25 @@ class _AppsTabState extends State<_AppsTab> {
       return 'Regla guardada sin restricciones activas';
     }
     return parts.join(' | ');
+  }
+}
+
+class _InstalledAppIcon extends StatelessWidget {
+  const _InstalledAppIcon({required this.iconBytes});
+
+  final Uint8List? iconBytes;
+
+  @override
+  Widget build(BuildContext context) {
+    if (iconBytes == null || iconBytes!.isEmpty) {
+      return const CircleAvatar(
+        child: Icon(Icons.apps),
+      );
+    }
+
+    return CircleAvatar(
+      backgroundImage: MemoryImage(iconBytes!),
+    );
   }
 }
 

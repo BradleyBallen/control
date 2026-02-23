@@ -153,6 +153,7 @@ class ParentalDashboardController extends ChangeNotifier {
       await _native.setBlockedApps(nextSet);
       await _native.syncProtection();
       await refreshProtectionStatus();
+      _setBlockingPrerequisiteHint();
     } catch (error, stackTrace) {
       _alwaysBlockedPackages = previousSet;
       _logError(error, stackTrace);
@@ -172,6 +173,7 @@ class ParentalDashboardController extends ChangeNotifier {
       await _native.upsertAppRule(normalizedRule);
       await _native.syncProtection();
       await refreshProtectionStatus();
+      _setBlockingPrerequisiteHint();
     } catch (error, stackTrace) {
       _rulesByPackage = previousRules;
       _logError(error, stackTrace);
@@ -190,6 +192,7 @@ class ParentalDashboardController extends ChangeNotifier {
       await _native.removeAppRule(normalizedPackage);
       await _native.syncProtection();
       await refreshProtectionStatus();
+      _setBlockingPrerequisiteHint();
     } catch (error, stackTrace) {
       _rulesByPackage = previousRules;
       _logError(error, stackTrace);
@@ -373,5 +376,14 @@ class ParentalDashboardController extends ChangeNotifier {
   void _logError(Object error, StackTrace stackTrace) {
     debugPrint('ParentalDashboardController error: $error');
     debugPrintStack(stackTrace: stackTrace);
+  }
+
+  void _setBlockingPrerequisiteHint() {
+    if (_protectionStatus.accessibilityEnabled) {
+      return;
+    }
+    _errorMessage =
+        'Bloqueo guardado. Activa Accesibilidad para bloquear apps al abrirlas.';
+    notifyListeners();
   }
 }

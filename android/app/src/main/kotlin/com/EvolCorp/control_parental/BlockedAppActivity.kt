@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.TextView
@@ -13,42 +14,48 @@ class BlockedAppActivity : Activity() {
     private var targetPackage: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        window.addFlags(
-            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-        )
-        setContentView(R.layout.activity_blocked_app)
-        setFinishOnTouchOutside(false)
+        runCatching {
+            super.onCreate(savedInstanceState)
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            )
+            setContentView(R.layout.activity_blocked_app)
+            setFinishOnTouchOutside(false)
 
-        targetPackage = intent.getStringExtra(EXTRA_PACKAGE_NAME)
-        val reason = intent.getStringExtra(EXTRA_REASON)
-        val titleText = findViewById<TextView>(R.id.titleText)
-        val blockSubtitleText = findViewById<TextView>(R.id.blockSubtitleText)
-        val blockedPackageText = findViewById<TextView>(R.id.blockedPackageText)
-        val reasonText = findViewById<TextView>(R.id.reasonText)
-        val openDashboardButton = findViewById<Button>(R.id.openDashboardButton)
-        val homeButton = findViewById<Button>(R.id.homeButton)
+            targetPackage = intent.getStringExtra(EXTRA_PACKAGE_NAME)
+            val reason = intent.getStringExtra(EXTRA_REASON)
+            val titleText = findViewById<TextView>(R.id.titleText)
+            val blockSubtitleText = findViewById<TextView>(R.id.blockSubtitleText)
+            val blockedPackageText = findViewById<TextView>(R.id.blockedPackageText)
+            val reasonText = findViewById<TextView>(R.id.reasonText)
+            val openDashboardButton = findViewById<Button>(R.id.openDashboardButton)
+            val homeButton = findViewById<Button>(R.id.homeButton)
 
-        titleText.text = "Modo concentracion activo"
-        blockSubtitleText.text = "Esta app esta bloqueada temporalmente para ayudarte a mantener el enfoque."
-        blockedPackageText.text = resolveAppName(targetPackage)
-        reasonText.text = reasonToMessage(reason)
+            titleText.text = "Modo concentracion activo"
+            blockSubtitleText.text = "Esta app esta bloqueada temporalmente para ayudarte a mantener el enfoque."
+            blockedPackageText.text = resolveAppName(targetPackage)
+            reasonText.text = reasonToMessage(reason)
 
-        ParentalPolicyStore.addEvent(
-            context = this,
-            type = EVENT_LOCK_SCREEN_SHOWN,
-            packageName = targetPackage,
-            reason = reason,
-            details = "Pantalla de bloqueo mostrada"
-        )
+            ParentalPolicyStore.addEvent(
+                context = this,
+                type = EVENT_LOCK_SCREEN_SHOWN,
+                packageName = targetPackage,
+                reason = reason,
+                details = "Pantalla de bloqueo mostrada"
+            )
 
-        openDashboardButton.setOnClickListener {
-            openDashboard()
-            finish()
-        }
+            openDashboardButton.setOnClickListener {
+                openDashboard()
+                finish()
+            }
 
-        homeButton.setOnClickListener {
+            homeButton.setOnClickListener {
+                navigateHome()
+                finish()
+            }
+        }.onFailure { error ->
+            Log.e(TAG, "BlockedAppActivity failed", error)
             navigateHome()
             finish()
         }
@@ -100,6 +107,7 @@ class BlockedAppActivity : Activity() {
     }
 
     companion object {
+        private const val TAG = "BlockedAppActivity"
         private const val EXTRA_PACKAGE_NAME = "extra_package_name"
         private const val EXTRA_REASON = "extra_reason"
         private const val EVENT_LOCK_SCREEN_SHOWN = "lock_screen_shown"

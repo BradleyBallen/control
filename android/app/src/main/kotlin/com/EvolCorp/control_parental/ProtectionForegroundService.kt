@@ -34,25 +34,41 @@ class ProtectionForegroundService : Service() {
     private val signalCooldowns = ConcurrentHashMap<String, Long>()
 
     override fun onCreate() {
-        super.onCreate()
-        isRunning = true
+        runCatching {
+            super.onCreate()
+            isRunning = true
+        }.onFailure { error ->
+            Log.e(TAG, "ProtectionForegroundService onCreate failed", error)
+            stopSelf()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!ParentalPolicyStore.isProtectionEnabled(this)) {
+        return runCatching {
+            if (!ParentalPolicyStore.isProtectionEnabled(this)) {
+                stopSelf()
+                return@runCatching START_NOT_STICKY
+            }
+            startForeground(NOTIFICATION_ID, buildNotification())
+            mainHandler.removeCallbacks(poller)
+            mainHandler.post(poller)
+            START_STICKY
+        }.getOrElse { error ->
+            Log.e(TAG, "ProtectionForegroundService onStartCommand failed", error)
+            mainHandler.removeCallbacks(poller)
             stopSelf()
-            return START_NOT_STICKY
+            START_NOT_STICKY
         }
-        startForeground(NOTIFICATION_ID, buildNotification())
-        mainHandler.removeCallbacks(poller)
-        mainHandler.post(poller)
-        return START_STICKY
     }
 
     override fun onDestroy() {
-        mainHandler.removeCallbacks(poller)
-        isRunning = false
-        super.onDestroy()
+        runCatching {
+            mainHandler.removeCallbacks(poller)
+            isRunning = false
+            super.onDestroy()
+        }.onFailure { error ->
+            Log.e(TAG, "ProtectionForegroundService onDestroy failed", error)
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

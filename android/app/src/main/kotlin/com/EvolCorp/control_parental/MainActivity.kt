@@ -307,6 +307,16 @@ class MainActivity : FlutterActivity() {
 
     private fun syncProtection() {
         runCatching {
+            if (!ParentalPolicyStore.isProtectionEnabled(this)) {
+                ProtectionForegroundService.stop(this)
+                AppBlockVpnService.stop(this)
+                return@runCatching
+            }
+            if (!isAccessibilityServiceEnabled()) {
+                Log.w(TAG, "Accessibility disabled, skipping foreground protection sync")
+                AppBlockVpnService.sync(this)
+                return@runCatching
+            }
             ProtectionForegroundService.sync(this)
         }.onFailure { error ->
             Log.e(TAG, "syncProtection failed", error)
