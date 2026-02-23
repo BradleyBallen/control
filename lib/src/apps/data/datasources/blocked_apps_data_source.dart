@@ -30,7 +30,7 @@ abstract class BlockedAppsDataSource {
 
 class MethodChannelBlockedAppsDataSource implements BlockedAppsDataSource {
   static const MethodChannel _channel = MethodChannel(
-    'com.EvolCorp.control_parental/blocked_apps',
+    'com.evolcorp.control_parental/blocked_apps',
   );
   final Map<String, Timer> _unblockTimers = <String, Timer>{};
 
