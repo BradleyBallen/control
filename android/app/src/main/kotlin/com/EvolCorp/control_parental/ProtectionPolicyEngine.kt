@@ -1,4 +1,4 @@
-package com.EvolCorp.control_parental
+package com.evolcorp.control_parental
 
 import android.content.Context
 import java.util.Calendar

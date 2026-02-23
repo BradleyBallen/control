@@ -1,4 +1,4 @@
-package com.EvolCorp.control_parental
+package com.evolcorp.control_parental
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo

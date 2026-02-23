@@ -1,4 +1,4 @@
-package com.EvolCorp.control_parental
+package com.evolcorp.control_parental
 
 import android.app.Notification
 import android.app.NotificationChannel

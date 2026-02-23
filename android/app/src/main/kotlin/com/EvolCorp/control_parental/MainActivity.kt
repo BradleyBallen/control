@@ -1,4 +1,4 @@
-package com.EvolCorp.control_parental
+package com.evolcorp.control_parental
 
 import android.app.Activity
 import android.app.admin.DevicePolicyManager
@@ -401,7 +401,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private companion object {
-        private const val CHANNEL_NAME = "com.EvolCorp.control_parental/blocked_apps"
+        private const val CHANNEL_NAME = "com.evolcorp.control_parental/blocked_apps"
         private const val METHOD_BLOCK = "block"
         private const val METHOD_UNBLOCK = "unblock"
         private const val METHOD_BLOCK_APP = "blockApp"

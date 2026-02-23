@@ -43,7 +43,7 @@ abstract class ParentalDataSource {
 
 class NativeParentalDataSource implements ParentalDataSource {
   static const MethodChannel _channel = MethodChannel(
-    'com.EvolCorp.control_parental/blocked_apps',
+    'com.evolcorp.control_parental/blocked_apps',
   );
 
   @override

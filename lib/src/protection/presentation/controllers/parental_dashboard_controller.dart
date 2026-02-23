@@ -57,25 +57,37 @@ class ParentalDashboardController extends ChangeNotifier {
   }
 
   Future<bool> createPin(String pin) async {
-    final success = await _native.setParentalPin(pin);
-    if (!success) {
+    try {
+      final success = await _native.setParentalPin(pin);
+      if (!success) {
+        return false;
+      }
+      _authStage = AuthStage.unlocked;
+      notifyListeners();
+      await loadAllData();
+      return true;
+    } catch (error, stackTrace) {
+      _logError(error, stackTrace);
+      _setError('No se pudo crear el PIN.');
       return false;
     }
-    _authStage = AuthStage.unlocked;
-    notifyListeners();
-    await loadAllData();
-    return true;
   }
 
   Future<bool> unlock(String pin) async {
-    final success = await _native.verifyParentalPin(pin);
-    if (!success) {
+    try {
+      final success = await _native.verifyParentalPin(pin);
+      if (!success) {
+        return false;
+      }
+      _authStage = AuthStage.unlocked;
+      notifyListeners();
+      await loadAllData();
+      return true;
+    } catch (error, stackTrace) {
+      _logError(error, stackTrace);
+      _setError('No se pudo verificar el PIN.');
       return false;
     }
-    _authStage = AuthStage.unlocked;
-    notifyListeners();
-    await loadAllData();
-    return true;
   }
 
   void lockSession() {
@@ -109,9 +121,9 @@ class ParentalDashboardController extends ChangeNotifier {
       _securityEvents = await eventsFuture;
       _usageReport = await usageFuture;
       _errorMessage = null;
-    } catch (_) {
-      _errorMessage =
-          'No se pudo cargar la configuracion local de autocontrol.';
+    } catch (error, stackTrace) {
+      _logError(error, stackTrace);
+      _errorMessage = 'No se pudo cargar la configuracion local de autocontrol.';
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -128,6 +140,7 @@ class ParentalDashboardController extends ChangeNotifier {
 
   Future<void> setAlwaysBlocked(String packageName, bool blocked) async {
     final normalizedPackage = packageName.toLowerCase();
+    final previousSet = Set<String>.from(_alwaysBlockedPackages);
     final nextSet = Set<String>.from(_alwaysBlockedPackages);
     if (blocked) {
       nextSet.add(normalizedPackage);
@@ -140,14 +153,16 @@ class ParentalDashboardController extends ChangeNotifier {
       await _native.setBlockedApps(nextSet);
       await _native.syncProtection();
       await refreshProtectionStatus();
-    } catch (_) {
-      _errorMessage = 'No se pudo actualizar bloqueo permanente.';
-      notifyListeners();
+    } catch (error, stackTrace) {
+      _alwaysBlockedPackages = previousSet;
+      _logError(error, stackTrace);
+      _setError('No se pudo actualizar bloqueo permanente.');
     }
   }
 
   Future<void> saveRule(AppControlRule rule) async {
     final normalizedRule = rule.copyWith(packageName: rule.packageName.toLowerCase());
+    final previousRules = Map<String, AppControlRule>.from(_rulesByPackage);
     _rulesByPackage = {
       ..._rulesByPackage,
       normalizedRule.packageName: normalizedRule,
@@ -157,14 +172,16 @@ class ParentalDashboardController extends ChangeNotifier {
       await _native.upsertAppRule(normalizedRule);
       await _native.syncProtection();
       await refreshProtectionStatus();
-    } catch (_) {
-      _errorMessage = 'No se pudo guardar la regla.';
-      notifyListeners();
+    } catch (error, stackTrace) {
+      _rulesByPackage = previousRules;
+      _logError(error, stackTrace);
+      _setError('No se pudo guardar la regla.');
     }
   }
 
   Future<void> removeRule(String packageName) async {
     final normalizedPackage = packageName.toLowerCase();
+    final previousRules = Map<String, AppControlRule>.from(_rulesByPackage);
     final nextRules = Map<String, AppControlRule>.from(_rulesByPackage)
       ..remove(normalizedPackage);
     _rulesByPackage = nextRules;
@@ -173,9 +190,10 @@ class ParentalDashboardController extends ChangeNotifier {
       await _native.removeAppRule(normalizedPackage);
       await _native.syncProtection();
       await refreshProtectionStatus();
-    } catch (_) {
-      _errorMessage = 'No se pudo eliminar la regla.';
-      notifyListeners();
+    } catch (error, stackTrace) {
+      _rulesByPackage = previousRules;
+      _logError(error, stackTrace);
+      _setError('No se pudo eliminar la regla.');
     }
   }
 
@@ -183,9 +201,9 @@ class ParentalDashboardController extends ChangeNotifier {
     try {
       _protectionStatus = await _native.getProtectionStatus();
       notifyListeners();
-    } catch (_) {
-      _errorMessage = 'No se pudo consultar el estado de proteccion.';
-      notifyListeners();
+    } catch (error, stackTrace) {
+      _logError(error, stackTrace);
+      _setError('No se pudo consultar el estado de proteccion.');
     }
   }
 
@@ -193,9 +211,9 @@ class ParentalDashboardController extends ChangeNotifier {
     try {
       await _native.syncProtection();
       await refreshProtectionStatus();
-    } catch (_) {
-      _errorMessage = 'No se pudo sincronizar la proteccion.';
-      notifyListeners();
+    } catch (error, stackTrace) {
+      _logError(error, stackTrace);
+      _setError('No se pudo sincronizar la proteccion.');
     }
   }
 
@@ -204,9 +222,9 @@ class ParentalDashboardController extends ChangeNotifier {
       _securitySettings = await _native.updateSecuritySettings(settings);
       await refreshProtectionStatus();
       notifyListeners();
-    } catch (_) {
-      _errorMessage = 'No se pudo actualizar la configuracion de seguridad.';
-      notifyListeners();
+    } catch (error, stackTrace) {
+      _logError(error, stackTrace);
+      _setError('No se pudo actualizar la configuracion de seguridad.');
     }
   }
 
@@ -217,34 +235,79 @@ class ParentalDashboardController extends ChangeNotifier {
   }
 
   Future<void> requestVpnPermissionAndStart() async {
-    final granted = await _native.requestVpnPermission();
-    if (granted) {
-      await _native.startVpnBlocking();
-      await refreshProtectionStatus();
+    try {
+      final granted = await _native.requestVpnPermission();
+      if (granted) {
+        await _native.startVpnBlocking();
+        await refreshProtectionStatus();
+      }
+    } catch (error, stackTrace) {
+      _logError(error, stackTrace);
+      _setError('No se pudo activar el bloqueo por VPN.');
     }
   }
 
   Future<void> stopVpnBlocking() async {
-    await _native.stopVpnBlocking();
-    await refreshProtectionStatus();
+    try {
+      await _native.stopVpnBlocking();
+      await refreshProtectionStatus();
+    } catch (error, stackTrace) {
+      _logError(error, stackTrace);
+      _setError('No se pudo detener el bloqueo por VPN.');
+    }
   }
 
-  Future<void> openAccessibilitySettings() => _native.openAccessibilitySettings();
-  Future<void> openUsageAccessSettings() => _native.openUsageAccessSettings();
-  Future<void> requestDeviceAdmin() => _native.requestDeviceAdmin();
-  Future<void> openDeviceAdminSettings() => _native.openDeviceAdminSettings();
+  Future<void> openAccessibilitySettings() async {
+    try {
+      await _native.openAccessibilitySettings();
+    } catch (error, stackTrace) {
+      _logError(error, stackTrace);
+      _setError('No se pudo abrir ajustes de accesibilidad.');
+    }
+  }
+
+  Future<void> openUsageAccessSettings() async {
+    try {
+      await _native.openUsageAccessSettings();
+    } catch (error, stackTrace) {
+      _logError(error, stackTrace);
+      _setError('No se pudo abrir ajustes de uso de apps.');
+    }
+  }
+
+  Future<void> requestDeviceAdmin() async {
+    try {
+      await _native.requestDeviceAdmin();
+    } catch (error, stackTrace) {
+      _logError(error, stackTrace);
+      _setError('No se pudo solicitar permisos de Device Admin.');
+    }
+  }
+
+  Future<void> openDeviceAdminSettings() async {
+    try {
+      await _native.openDeviceAdminSettings();
+    } catch (error, stackTrace) {
+      _logError(error, stackTrace);
+      _setError('No se pudo abrir ajustes de Device Admin.');
+    }
+  }
 
   Future<void> changePin({
     required String oldPin,
     required String newPin,
   }) async {
-    final changed = await _native.changeParentalPin(
-      oldPin: oldPin,
-      newPin: newPin,
-    );
-    if (!changed) {
-      _errorMessage = 'No se pudo cambiar el PIN.';
-      notifyListeners();
+    try {
+      final changed = await _native.changeParentalPin(
+        oldPin: oldPin,
+        newPin: newPin,
+      );
+      if (!changed) {
+        _setError('No se pudo cambiar el PIN.');
+      }
+    } catch (error, stackTrace) {
+      _logError(error, stackTrace);
+      _setError('No se pudo cambiar el PIN.');
     }
   }
 
@@ -258,7 +321,8 @@ class ParentalDashboardController extends ChangeNotifier {
       _usageReport = await _native.getUsageReport(days: _reportDays);
       _securityEvents = await _native.getSecurityEvents();
       _errorMessage = null;
-    } catch (_) {
+    } catch (error, stackTrace) {
+      _logError(error, stackTrace);
       _errorMessage = 'No se pudieron actualizar los reportes.';
     } finally {
       _isRefreshingReports = false;
@@ -267,9 +331,14 @@ class ParentalDashboardController extends ChangeNotifier {
   }
 
   Future<void> clearSecurityEvents() async {
-    await _native.clearSecurityEvents();
-    _securityEvents = const [];
-    notifyListeners();
+    try {
+      await _native.clearSecurityEvents();
+      _securityEvents = const [];
+      notifyListeners();
+    } catch (error, stackTrace) {
+      _logError(error, stackTrace);
+      _setError('No se pudieron limpiar los eventos de seguridad.');
+    }
   }
 
   bool get usageAccessGranted => _protectionStatus.usageAccessGranted;
@@ -294,5 +363,15 @@ class ParentalDashboardController extends ChangeNotifier {
 
   bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  void _setError(String message) {
+    _errorMessage = message;
+    notifyListeners();
+  }
+
+  void _logError(Object error, StackTrace stackTrace) {
+    debugPrint('ParentalDashboardController error: $error');
+    debugPrintStack(stackTrace: stackTrace);
   }
 }

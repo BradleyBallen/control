@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'src/apps/data/datasources/device_apps_data_source.dart';
@@ -8,7 +10,20 @@ import 'src/protection/presentation/controllers/parental_dashboard_controller.da
 import 'src/protection/presentation/pages/parental_dashboard_page.dart';
 
 void main() {
-  runApp(const MyApp());
+  WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrint(details.exceptionAsString());
+    debugPrintStack(stackTrace: details.stack);
+  };
+
+  runZonedGuarded(
+    () => runApp(const MyApp()),
+    (error, stackTrace) {
+      debugPrint('Unhandled app error: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    },
+  );
 }
 
 ParentalDashboardController _buildController() {
