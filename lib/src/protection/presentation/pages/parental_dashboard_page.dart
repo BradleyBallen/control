@@ -285,6 +285,7 @@ class _AppsTab extends StatefulWidget {
 class _AppsTabState extends State<_AppsTab> {
   String _query = '';
   bool _isBlockingSocialApps = false;
+  final Set<String> _updatingQuickBlockPackages = <String>{};
 
   static const Set<String> _socialPackages = <String>{
     'com.facebook.katana',
@@ -453,6 +454,11 @@ class _AppsTabState extends State<_AppsTab> {
               final packageName = app.packageName.toLowerCase();
               final alwaysBlocked = widget.controller.isAlwaysBlocked(packageName);
               final rule = widget.controller.ruleFor(packageName);
+              final vpnBrowserBlocked = _isQuickVpnBrowserBlockEnabled(rule);
+              final quickBlockActive = alwaysBlocked || vpnBrowserBlocked;
+              final isApplyingQuickBlock = _updatingQuickBlockPackages.contains(
+                packageName,
+              );
               final usageMinutes = usageByPackage[packageName] ?? 0;
               final usageSummary = usagePermissionGranted
                   ? 'Hoy: $usageMinutes min'
@@ -471,10 +477,14 @@ class _AppsTabState extends State<_AppsTab> {
                 ),
                 isThreeLine: true,
                 trailing: Switch(
-                  value: alwaysBlocked,
-                  onChanged: (value) {
-                    widget.controller.setAlwaysBlocked(packageName, value);
-                  },
+                  value: quickBlockActive,
+                  onChanged: isApplyingQuickBlock
+                      ? null
+                      : (_) => _openQuickBlockModal(
+                          app,
+                          alwaysBlocked: alwaysBlocked,
+                          vpnBrowserBlocked: vpnBrowserBlocked,
+                        ),
                 ),
                 onTap: () => widget.onEditRule(app, initialRule: rule),
               );
@@ -486,8 +496,15 @@ class _AppsTabState extends State<_AppsTab> {
   }
 
   String _ruleSummary(AppControlRule? rule, {required bool alwaysBlocked}) {
+    final vpnBrowserBlocked = _isQuickVpnBrowserBlockEnabled(rule);
+    if (alwaysBlocked && vpnBrowserBlocked) {
+      return 'Pausada + VPN en navegadores';
+    }
     if (alwaysBlocked) {
       return 'Pausada manualmente';
+    }
+    if (vpnBrowserBlocked) {
+      return 'VPN en navegadores activa';
     }
     if (rule == null) {
       return 'Sin limites activos';
@@ -504,7 +521,84 @@ class _AppsTabState extends State<_AppsTab> {
     if (parts.isEmpty) {
       return 'Regla guardada sin restricciones activas';
     }
-      return parts.join(' | ');
+    return parts.join(' | ');
+  }
+
+  bool _isQuickVpnBrowserBlockEnabled(AppControlRule? rule) {
+    return rule?.alwaysBlocked == true && rule?.vpnBlockEnabled == true;
+  }
+
+  Future<void> _openQuickBlockModal(
+    InstalledApp app, {
+    required bool alwaysBlocked,
+    required bool vpnBrowserBlocked,
+  }) async {
+    final packageName = app.packageName.toLowerCase();
+    if (_updatingQuickBlockPackages.contains(packageName)) {
+      return;
+    }
+
+    final selection = await showModalBottomSheet<_QuickBlockSelection>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) {
+        return _QuickBlockSheet(
+          appName: app.appName,
+          packageName: app.packageName,
+          initialBlockApp: alwaysBlocked,
+          initialBlockVpnInBrowsers: vpnBrowserBlocked,
+        );
+      },
+    );
+    if (!mounted || selection == null) {
+      return;
+    }
+
+    setState(() {
+      _updatingQuickBlockPackages.add(packageName);
+    });
+    final success = await widget.controller.applyQuickBlockOptions(
+      packageName,
+      blockApp: selection.blockApp,
+      blockVpnInBrowsers: selection.blockVpnInBrowsers,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _updatingQuickBlockPackages.remove(packageName);
+    });
+    if (!success) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _quickBlockSummary(
+            blockApp: selection.blockApp,
+            blockVpnInBrowsers: selection.blockVpnInBrowsers,
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _quickBlockSummary({
+    required bool blockApp,
+    required bool blockVpnInBrowsers,
+  }) {
+    if (blockApp && blockVpnInBrowsers) {
+      return 'Se activo bloqueo normal + bloqueo VPN en navegadores.';
+    }
+    if (blockApp) {
+      return 'Se activo bloqueo normal de la app.';
+    }
+    if (blockVpnInBrowsers) {
+      return 'Se activo bloqueo VPN en navegadores.';
+    }
+    return 'Se quitaron los bloqueos rapidos.';
   }
 
   bool _isSocialApp(InstalledApp app) {
@@ -556,6 +650,112 @@ class _AppsTabState extends State<_AppsTab> {
         : 'Se desbloquearon $newlyBlocked apps de redes sociales.';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
+    );
+  }
+}
+
+class _QuickBlockSelection {
+  const _QuickBlockSelection({
+    required this.blockApp,
+    required this.blockVpnInBrowsers,
+  });
+
+  final bool blockApp;
+  final bool blockVpnInBrowsers;
+}
+
+class _QuickBlockSheet extends StatefulWidget {
+  const _QuickBlockSheet({
+    required this.appName,
+    required this.packageName,
+    required this.initialBlockApp,
+    required this.initialBlockVpnInBrowsers,
+  });
+
+  final String appName;
+  final String packageName;
+  final bool initialBlockApp;
+  final bool initialBlockVpnInBrowsers;
+
+  @override
+  State<_QuickBlockSheet> createState() => _QuickBlockSheetState();
+}
+
+class _QuickBlockSheetState extends State<_QuickBlockSheet> {
+  late bool _blockApp;
+  late bool _blockVpnInBrowsers;
+
+  @override
+  void initState() {
+    super.initState();
+    _blockApp = widget.initialBlockApp;
+    _blockVpnInBrowsers = widget.initialBlockVpnInBrowsers;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 8, 16, bottomInset + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(widget.appName, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 4),
+          Text(widget.packageName, style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 12),
+          CheckboxListTile(
+            value: _blockApp,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Bloqueo normal de la app'),
+            subtitle: const Text('Impide abrir la app desde el dispositivo.'),
+            onChanged: (value) {
+              setState(() {
+                _blockApp = value ?? false;
+              });
+            },
+          ),
+          CheckboxListTile(
+            value: _blockVpnInBrowsers,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Bloqueo VPN en navegadores'),
+            subtitle: const Text(
+              'Bloquea rutas web relacionadas a esta app en los navegadores.',
+            ),
+            onChanged: (value) {
+              setState(() {
+                _blockVpnInBrowsers = value ?? false;
+              });
+            },
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancelar'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(
+                      _QuickBlockSelection(
+                        blockApp: _blockApp,
+                        blockVpnInBrowsers: _blockVpnInBrowsers,
+                      ),
+                    );
+                  },
+                  child: const Text('Aplicar'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -934,7 +1134,7 @@ class _RuleEditorSheetState extends State<_RuleEditorSheet> {
                       Navigator.of(context).pop(
                         widget.initialRule.copyWith(
                           packageName: widget.app.packageName,
-                          alwaysBlocked: false,
+                          alwaysBlocked: widget.initialRule.alwaysBlocked,
                           scheduleEnabled: _scheduleEnabled,
                           scheduleStartMinute: _startMinute,
                           scheduleEndMinute: _endMinute,

@@ -35,7 +35,7 @@ object ProtectionPolicyEngine {
         }
 
         val rule = ParentalPolicyStore.getRule(context, normalizedPackage) ?: return allow()
-        if (rule.alwaysBlocked) {
+        if (rule.alwaysBlocked && !rule.vpnBlockEnabled) {
             return blocked(REASON_ALWAYS_BLOCKED)
         }
         if (rule.scheduleEnabled && !isWithinAllowedSchedule(rule, nowMs)) {
@@ -96,6 +96,21 @@ object ProtectionPolicyEngine {
             if (!ParentalPolicyStore.isTemporarilyUnlocked(context, packageName, nowMs)) {
                 blocked.add(packageName)
             }
+        }
+        return blocked
+    }
+
+    fun getWebBlockedPackages(context: Context, nowMs: Long = System.currentTimeMillis()): Set<String> {
+        val blocked = mutableSetOf<String>()
+        val rules = ParentalPolicyStore.getRules(context)
+        rules.forEach { (packageName, rule) ->
+            if (!rule.alwaysBlocked || !rule.vpnBlockEnabled) {
+                return@forEach
+            }
+            if (ParentalPolicyStore.isTemporarilyUnlocked(context, packageName, nowMs)) {
+                return@forEach
+            }
+            blocked.add(packageName)
         }
         return blocked
     }
@@ -166,6 +181,7 @@ object ProtectionPolicyEngine {
     const val REASON_ALWAYS_BLOCKED = "always_blocked"
     const val REASON_OUTSIDE_SCHEDULE = "outside_schedule"
     const val REASON_DAILY_LIMIT_REACHED = "daily_limit_reached"
+    const val REASON_WEB_ROUTE_BLOCKED = "web_route_blocked"
     const val REASON_SETTINGS_PROTECTED = "settings_protected"
     const val REASON_UNINSTALL_PROTECTED = "uninstall_flow_protected"
 

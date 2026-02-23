@@ -33,7 +33,7 @@ class BlockedAppActivity : Activity() {
             val homeButton = findViewById<Button>(R.id.homeButton)
 
             titleText.text = "Modo concentracion activo"
-            blockSubtitleText.text = "Esta app esta bloqueada temporalmente para ayudarte a mantener el enfoque."
+            blockSubtitleText.text = subtitleForReason(reason)
             blockedPackageText.text = resolveAppName(targetPackage)
             reasonText.text = reasonToMessage(reason)
 
@@ -86,13 +86,32 @@ class BlockedAppActivity : Activity() {
     }
 
     private fun reasonToMessage(reason: String?): String {
-        return when (reason?.trim()?.lowercase(Locale.ROOT)) {
+        val normalizedReason = reason?.trim()?.lowercase(Locale.ROOT) ?: ""
+        if (
+            normalizedReason == ProtectionPolicyEngine.REASON_WEB_ROUTE_BLOCKED ||
+            normalizedReason.startsWith("${ProtectionPolicyEngine.REASON_WEB_ROUTE_BLOCKED}:")
+        ) {
+            return "Este contenido web esta bloqueado porque coincide con una app pausada."
+        }
+        return when (normalizedReason) {
             ProtectionPolicyEngine.REASON_ALWAYS_BLOCKED -> "La pausaste manualmente para proteger tu concentracion."
             ProtectionPolicyEngine.REASON_OUTSIDE_SCHEDULE -> "Esta app esta fuera del horario permitido."
             ProtectionPolicyEngine.REASON_DAILY_LIMIT_REACHED -> "Ya alcanzaste el limite diario configurado."
             ProtectionPolicyEngine.REASON_SETTINGS_PROTECTED -> "Los ajustes estan protegidos mientras el modo concentracion esta activo."
             ProtectionPolicyEngine.REASON_UNINSTALL_PROTECTED -> "La desinstalacion esta protegida mientras el modo concentracion esta activo."
             else -> "Esta app esta bloqueada por tus reglas de concentracion."
+        }
+    }
+
+    private fun subtitleForReason(reason: String?): String {
+        val normalizedReason = reason?.trim()?.lowercase(Locale.ROOT) ?: ""
+        return if (
+            normalizedReason == ProtectionPolicyEngine.REASON_WEB_ROUTE_BLOCKED ||
+            normalizedReason.startsWith("${ProtectionPolicyEngine.REASON_WEB_ROUTE_BLOCKED}:")
+        ) {
+            "Se detecto un acceso web relacionado con una app bloqueada."
+        } else {
+            "Esta app esta bloqueada temporalmente para ayudarte a mantener el enfoque."
         }
     }
 
